@@ -30,6 +30,12 @@ using System.IO;
 
 namespace LZ4
 {
+    public interface IBufferAllocator
+    {
+        byte[] GetBuffer(int minSize);
+        void ReturnBuffer(byte[] buffer);
+    }
+
 	// ReSharper disable once PartialTypeWithSinglePart
 	/// <summary>Block compression stream. Allows to use LZ4 for stream compression.</summary>
 	public partial class LZ4Stream: Stream
@@ -57,9 +63,11 @@ namespace LZ4
 			Passes = 0x04 | 0x08 | 0x10, // not used currently
 		}
 
-		#endregion
+        #endregion
 
-		#region fields
+        #region fields
+
+        private readonly IBufferAllocator _bufferAllocator;
 
 		/// <summary>The inner stream.</summary>
 		private readonly Stream _innerStream;
@@ -109,7 +117,8 @@ namespace LZ4
 			LZ4StreamMode compressionMode,
 			bool highCompression,
 			int blockSize = 1024*1024,
-			bool interactiveRead = false)
+			bool interactiveRead = false,
+            IBufferAllocator bufferAllocator = null)
 		{
 			_innerStream = innerStream;
 			_compressionMode = compressionMode;
@@ -117,6 +126,7 @@ namespace LZ4
 			_interactiveRead = interactiveRead;
 			_isolateInnerStream = false;
 			_blockSize = Math.Max(16, blockSize);
+            _bufferAllocator = bufferAllocator;
 		}
 
 		/// <summary>Initializes a new instance of the <see cref="LZ4Stream" /> class.</summary>
@@ -128,7 +138,8 @@ namespace LZ4
 			Stream innerStream,
 			LZ4StreamMode compressionMode,
 			LZ4StreamFlags compressionFlags = LZ4StreamFlags.Default,
-			int blockSize = 1024*1024)
+			int blockSize = 1024*1024,
+            IBufferAllocator bufferAllocator = null)
 		{
 			_innerStream = innerStream;
 			_compressionMode = compressionMode;
@@ -136,11 +147,28 @@ namespace LZ4
 			_interactiveRead = (compressionFlags & LZ4StreamFlags.InteractiveRead) != 0;
 			_isolateInnerStream = (compressionFlags & LZ4StreamFlags.IsolateInnerStream) != 0;
 			_blockSize = Math.Max(16, blockSize);
+            _bufferAllocator = bufferAllocator;
 		}
 
 		#endregion
 
 		#region utilities
+
+        byte[] AllocateBuffer(int size)
+        {
+            if (_bufferAllocator != null)
+                return _bufferAllocator.GetBuffer(size);
+
+            return new byte[size];
+        }
+
+        void ReturnBuffer(byte[] buffer)
+        {
+            if (buffer == null)
+                return;
+
+            _bufferAllocator?.ReturnBuffer(buffer);
+        }
 
 		/// <summary>Returns NotSupportedException.</summary>
 		/// <param name="operationName">Name of the operation.</param>
@@ -224,13 +252,13 @@ namespace LZ4
 		/// <param name="value">The value.</param>
 		private void WriteVarInt(ulong value)
 		{
-			var buffer = new byte[1];
+            byte buffer;
 			while (true)
 			{
 				var b = (byte)(value & 0x7F);
 				value >>= 7;
-				buffer[0] = (byte)(b | (value == 0 ? 0 : 0x80));
-				_innerStream.Write(buffer, 0, 1);
+				buffer = (byte)(b | (value == 0 ? 0 : 0x80));
+				_innerStream.WriteByte(buffer);
 				if (value == 0) break;
 			}
 		}
@@ -240,14 +268,19 @@ namespace LZ4
 		{
 			if (_bufferOffset <= 0) return;
 
-			var compressed = new byte[_bufferOffset];
+            bool bufferReturned = false;
+
+			var compressed = AllocateBuffer(_bufferOffset);
 			var compressedLength = _highCompression
 				? LZ4Codec.EncodeHC(_buffer, 0, _bufferOffset, compressed, 0, _bufferOffset)
 				: LZ4Codec.Encode(_buffer, 0, _bufferOffset, compressed, 0, _bufferOffset);
 
 			if (compressedLength <= 0 || compressedLength >= _bufferOffset)
 			{
-				// incompressible block
+                // incompressible block
+                ReturnBuffer(compressed);
+                bufferReturned = true;
+
 				compressed = _buffer;
 				compressedLength = _bufferOffset;
 			}
@@ -266,6 +299,9 @@ namespace LZ4
 			_innerStream.Write(compressed, 0, compressedLength);
 
 			_bufferOffset = 0;
+
+            if (!bufferReturned)
+                ReturnBuffer(compressed);
 		}
 
 		/// <summary>Reads the next chunk from stream.</summary>
@@ -284,25 +320,31 @@ namespace LZ4
 				var compressedLength = isCompressed ? (int)ReadVarInt() : originalLength;
 				if (compressedLength > originalLength) throw EndOfStream(); // corrupted
 
-				var compressed = new byte[compressedLength];
+				var compressed = AllocateBuffer(compressedLength);
 				var chunk = ReadBlock(compressed, 0, compressedLength);
 
 				if (chunk != compressedLength) throw EndOfStream(); // corrupted
 
 				if (!isCompressed)
 				{
+                    ReturnBuffer(_buffer);
 					_buffer = compressed; // no compression on this chunk
 					_bufferLength = compressedLength;
 				}
 				else
 				{
-					if (_buffer == null || _buffer.Length < originalLength)
-						_buffer = new byte[originalLength];
+                    if (_buffer == null || _buffer.Length < originalLength)
+                    {
+                        ReturnBuffer(_buffer);
+                        _buffer = AllocateBuffer(originalLength);
+                    }
 					var passes = (int)flags >> 2;
 					if (passes != 0)
 						throw new NotSupportedException("Chunks with multiple passes are not supported.");
 					LZ4Codec.Decode(compressed, 0, compressedLength, _buffer, 0, originalLength, true);
 					_bufferLength = originalLength;
+
+                    ReturnBuffer(compressed);
 				}
 
 				_bufferOffset = 0;
@@ -349,11 +391,12 @@ namespace LZ4
 			get { return -1; }
 		}
 
-		/// <summary>When overridden in a derived class, gets or sets the position within the current stream.</summary>
-		/// <returns>The current position within the stream.</returns>
+        /// <summary>When overridden in a derived class, gets or sets the position within the current stream.</summary>
+        /// <returns>The current position within the stream.</returns>
+        long _uncompressedPosition;
 		public override long Position
 		{
-			get { return -1; }
+			get { return _uncompressedPosition; }
 			set { throw NotSupported("SetPosition"); }
 		}
 
@@ -365,7 +408,10 @@ namespace LZ4
 
 			if (_bufferOffset >= _bufferLength && !AcquireNextChunk())
 				return -1; // that's just end of stream
-			return _buffer[_bufferOffset++];
+
+            _uncompressedPosition++;
+
+            return _buffer[_bufferOffset++];
 		}
 
 		/// <summary>When overridden in a derived class, reads a sequence of bytes from the current stream and advances the position within the stream by the number of bytes read.</summary>
@@ -397,7 +443,9 @@ namespace LZ4
 				}
 			}
 
-			return total;
+            _uncompressedPosition += total;
+
+            return total;
 		}
 
 		/// <summary>When overridden in a derived class, sets the position within the current stream.</summary>
@@ -422,9 +470,11 @@ namespace LZ4
 		{
 			if (!CanWrite) throw NotSupported("Write");
 
-			if (_buffer == null)
+            _uncompressedPosition++;
+
+            if (_buffer == null)
 			{
-				_buffer = new byte[_blockSize];
+				_buffer = AllocateBuffer(_blockSize);
 				_bufferLength = _blockSize;
 				_bufferOffset = 0;
 			}
@@ -447,12 +497,14 @@ namespace LZ4
 
 			if (_buffer == null)
 			{
-				_buffer = new byte[_blockSize];
+				_buffer = AllocateBuffer(_blockSize);
 				_bufferLength = _blockSize;
 				_bufferOffset = 0;
 			}
 
-			while (count > 0)
+            _uncompressedPosition += count;
+
+            while (count > 0)
 			{
 				var chunk = Math.Min(count, _bufferLength - _bufferOffset);
 				if (chunk > 0)
@@ -477,6 +529,8 @@ namespace LZ4
 			if (!_isolateInnerStream)
 				_innerStream.Dispose();
 			base.Dispose(disposing);
+
+            ReturnBuffer(_buffer);
 		}
 
 		#endregion

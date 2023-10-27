@@ -27,6 +27,7 @@ IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 using System;
 using System.Diagnostics;
+using System.Collections.Generic;
 
 // ReSharper disable CheckNamespace
 // ReSharper disable InconsistentNaming
@@ -313,19 +314,62 @@ namespace LZ4ps
 			return length; // done
 		}
 
-		#endregion
+        #endregion
 
-		#region Encode32
+        #region Encode32
 
-		/// <summary>Encodes the specified input.</summary>
-		/// <param name="input">The input.</param>
-		/// <param name="inputOffset">The input offset.</param>
-		/// <param name="inputLength">Length of the input.</param>
-		/// <param name="output">The output.</param>
-		/// <param name="outputOffset">The output offset.</param>
-		/// <param name="outputLength">Length of the output.</param>
-		/// <returns>Number of bytes written.</returns>
-		public static int Encode32(
+        static Stack<ushort[]> _ushortHashtables = new Stack<ushort[]>();
+        static Stack<int[]> _intHashtables = new Stack<int[]>();
+
+        static ushort[] GetUshortHashtable()
+        {
+            lock(_ushortHashtables)
+            {
+                if (_ushortHashtables.Count > 0)
+                    return _ushortHashtables.Pop();
+                else
+                    return new ushort[HASH64K_TABLESIZE];
+            }
+        }
+
+        static int[] GetIntHashtable()
+        {
+            lock (_intHashtables)
+            {
+                if (_intHashtables.Count > 0)
+                    return _intHashtables.Pop();
+                else
+                    return new int[HASH_TABLESIZE];
+            }
+        }
+
+        static void ReturnHashtable(ushort[] hashtable)
+        {
+            for (int i = 0; i < hashtable.Length; i++)
+                hashtable[i] = 0;
+
+            lock(_ushortHashtables)
+                _ushortHashtables.Push(hashtable);
+        }
+
+        static void ReturnHashtable(int[] hashtable)
+        {
+            for (int i = 0; i < hashtable.Length; i++)
+                hashtable[i] = 0;
+
+            lock (_intHashtables)
+                _intHashtables.Push(hashtable);
+        }
+
+        /// <summary>Encodes the specified input.</summary>
+        /// <param name="input">The input.</param>
+        /// <param name="inputOffset">The input offset.</param>
+        /// <param name="inputLength">Length of the input.</param>
+        /// <param name="output">The output.</param>
+        /// <param name="outputOffset">The output offset.</param>
+        /// <param name="outputLength">Length of the output.</param>
+        /// <returns>Number of bytes written.</returns>
+        public static int Encode32(
 			byte[] input,
 			int inputOffset,
 			int inputLength,
@@ -340,13 +384,17 @@ namespace LZ4ps
 
 			if (inputLength < LZ4_64KLIMIT)
 			{
-				var hashTable = new ushort[HASH64K_TABLESIZE];
-				return LZ4_compress64kCtx_safe32(hashTable, input, output, inputOffset, outputOffset, inputLength, outputLength);
+                var hashTable = GetUshortHashtable();
+				var result = LZ4_compress64kCtx_safe32(hashTable, input, output, inputOffset, outputOffset, inputLength, outputLength);
+                ReturnHashtable(hashTable);
+                return result;
 			}
 			else
 			{
-				var hashTable = new int[HASH_TABLESIZE];
-				return LZ4_compressCtx_safe32(hashTable, input, output, inputOffset, outputOffset, inputLength, outputLength);
+                var hashTable = GetIntHashtable();
+				var result = LZ4_compressCtx_safe32(hashTable, input, output, inputOffset, outputOffset, inputLength, outputLength);
+                ReturnHashtable(hashTable);
+                return result;
 			}
 		}
 
@@ -592,10 +640,53 @@ namespace LZ4ps
 			public int nextToUpdate;
 		};
 
-		// ReSharper restore InconsistentNaming
+        // ReSharper restore InconsistentNaming
+
+        static Stack<ushort[]> _HCushortHashtables = new Stack<ushort[]>();
+        static Stack<int[]> _HCintHashtables = new Stack<int[]>();
+
+        static ushort[] GetHCUshortHashtable()
+        {
+            lock (_HCushortHashtables)
+            {
+                if (_HCushortHashtables.Count > 0)
+                    return _HCushortHashtables.Pop();
+                else
+                    return new ushort[MAXD];
+            }
+        }
+
+        static int[] GetHCIntHashtable()
+        {
+            lock (_HCintHashtables)
+            {
+                if (_HCintHashtables.Count > 0)
+                    return _HCintHashtables.Pop();
+                else
+                    return new int[HASHHC_TABLESIZE];
+            }
+        }
+
+        static void ReturnHCHashtable(ushort[] hashtable)
+        {
+            for (int i = 0; i < hashtable.Length; i++)
+                hashtable[i] = 0;
+
+            lock (_HCushortHashtables)
+                _HCushortHashtables.Push(hashtable);
+        }
+
+        static void ReturnHCHashtable(int[] hashtable)
+        {
+            for (int i = 0; i < hashtable.Length; i++)
+                hashtable[i] = 0;
+
+            lock (_HCintHashtables)
+                _HCintHashtables.Push(hashtable);
+        }
 
 
-		private static LZ4HC_Data_Structure LZ4HC_Create(byte[] src, int src_0, int src_len, byte[] dst, int dst_0, int dst_len)
+        private static LZ4HC_Data_Structure LZ4HC_Create(byte[] src, int src_0, int src_len, byte[] dst, int dst_0, int dst_len)
 		{
 			var hc4 = new LZ4HC_Data_Structure {
 				src = src,
@@ -606,8 +697,8 @@ namespace LZ4ps
 				dst_base = dst_0,
 				dst_len = dst_len,
 				dst_end = dst_0 + dst_len,
-				hashTable = new int[HASHHC_TABLESIZE],
-				chainTable = new ushort[MAXD],
+				hashTable = GetHCIntHashtable(),
+				chainTable = GetHCUshortHashtable(),
 				nextToUpdate = src_0 + 1,
 			};
 
@@ -625,9 +716,13 @@ namespace LZ4ps
 			byte[] input, int inputOffset, int inputLength,
 			byte[] output, int outputOffset, int outputLength)
 		{
-			return LZ4_compressHCCtx_32(
-				LZ4HC_Create(
-					input, inputOffset, inputLength, output, outputOffset, outputLength));
+            var ctx = LZ4HC_Create(input, inputOffset, inputLength, output, outputOffset, outputLength);
+            var result = LZ4_compressHCCtx_32(ctx);
+
+            ReturnHCHashtable(ctx.chainTable);
+            ReturnHCHashtable(ctx.hashTable);
+
+            return result;
 		}
 
 		/// <summary>Encodes the specified input using HC codec.</summary>
