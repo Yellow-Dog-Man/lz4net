@@ -4,11 +4,11 @@ using System.Resources;
 // General Information about an assembly is controlled through the following 
 // set of attributes. Change these attribute values to modify the information
 // associated with an assembly.
-[assembly: AssemblyTitle("LZ4")]
+//[assembly: AssemblyTitle("LZ4")]
 [assembly: AssemblyDescription("Fork of LZ4 compression integrator (.NET2)")]
 [assembly: AssemblyConfiguration("")]
 [assembly: AssemblyCompany("Milosz Krajewski")]
-[assembly: AssemblyProduct("LZ4")]
+//[assembly: AssemblyProduct("LZ4")]
 [assembly: AssemblyCopyright("Copyright (c) 2015, Milosz Krajewski")]
 [assembly: AssemblyTrademark("")]
 [assembly: AssemblyCulture("")]

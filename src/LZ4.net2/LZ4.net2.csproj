@@ -5,6 +5,7 @@
   <PropertyGroup>
     <Authors>Milosz Krajewski,Yellow Dog Man Studios</Authors>
     <PackageId>YellowDogMan.LZ4</PackageId>
+    <Id>YellowDogMan.LZ4</Id>
     <RepositoryUrl>https://github.com/Yellow-Dog-Man/lz4net</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
     <PackageProjectURL>https://github.com/Yellow-Dog-Man/lz4net</PackageProjectURL>
