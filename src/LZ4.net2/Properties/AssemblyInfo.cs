@@ -5,7 +5,7 @@ using System.Resources;
 // set of attributes. Change these attribute values to modify the information
 // associated with an assembly.
 [assembly: AssemblyTitle("LZ4")]
-[assembly: AssemblyDescription("LZ4 compression integrator (.NET2)")]
+[assembly: AssemblyDescription("Fork of LZ4 compression integrator (.NET2)")]
 [assembly: AssemblyConfiguration("")]
 [assembly: AssemblyCompany("Milosz Krajewski")]
 [assembly: AssemblyProduct("LZ4")]
