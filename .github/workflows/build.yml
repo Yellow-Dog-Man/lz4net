@@ -19,12 +19,11 @@ jobs:
       run:
         working-directory: ./src/LZ4.net2
     steps:
-    - uses: actions/checkout@v4
-    - name: Setup .NET 7
-      uses: actions/setup-dotnet@v3
-      with:
-        dotnet-version: 7.0.x
-    - name: Install dependencies
-      run: dotnet restore
-    - name: Build
-      run: dotnet build --configuration Release --no-restore
+    - uses: actions/checkout@latest
+    - name: Setup MSBuild
+      uses: microsoft/setup-msbuild@latest
+    - name: Setup NuGet
+      uses: NuGet/setup-nuget@latest
+    - name: Build Solution
+      run: |
+        msbuild.exe LZ4.net2.csproj /nologo
