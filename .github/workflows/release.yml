@@ -23,4 +23,4 @@ jobs:
     - name: Pack
       run: nuget pack LZ4.net2.csproj -OutputDirectory nupkgs -Build -Version ${{ env.VERSION }} -Properties version="${{ env.VERSION }}"
     - name: Nuget Publish
-      run: nuget push nupkgs\*.nupkg -Source https://api.nuget.org/v3/index.json
+      run: nuget push nupkgs\*.nupkg -ApiKey ${{ secrets.NUGET_TOKEN }} -Source https://api.nuget.org/v3/index.json
