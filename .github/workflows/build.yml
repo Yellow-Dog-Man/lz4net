@@ -19,11 +19,11 @@ jobs:
       run:
         working-directory: ./src/LZ4.net2
     steps:
-    - uses: actions/checkout@latest
+    - uses: actions/checkout@v4
     - name: Setup MSBuild
-      uses: microsoft/setup-msbuild@latest
+      uses: microsoft/setup-msbuild@v1.1
     - name: Setup NuGet
-      uses: NuGet/setup-nuget@latest
+      uses: NuGet/setup-nuget@v1
     - name: Build Solution
       run: |
         msbuild.exe LZ4.net2.csproj /nologo
