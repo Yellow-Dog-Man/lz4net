@@ -142,24 +142,46 @@ namespace LZ4ps
 
 		private static void Copy4(byte[] buf, int src, int dst)
 		{
-			Assert(dst > src, "Copying backwards is not implemented");
-			buf[dst + 3] = buf[src + 3];
-			buf[dst + 2] = buf[src + 2];
-			buf[dst + 1] = buf[src + 1];
-			buf[dst] = buf[src];
+			if (dst > src)
+			{
+				buf[dst + 3] = buf[src + 3];
+				buf[dst + 2] = buf[src + 2];
+				buf[dst + 1] = buf[src + 1];
+				buf[dst] = buf[src];
+			}
+			else
+			{
+                buf[dst] = buf[src];
+                buf[dst + 1] = buf[src + 1];
+                buf[dst + 2] = buf[src + 2];
+                buf[dst + 3] = buf[src + 3];
+            }
 		}
 
 		private static void Copy8(byte[] buf, int src, int dst)
 		{
-			Assert(dst > src, "Copying backwards is not implemented");
-			buf[dst + 7] = buf[src + 7];
-			buf[dst + 6] = buf[src + 6];
-			buf[dst + 5] = buf[src + 5];
-			buf[dst + 4] = buf[src + 4];
-			buf[dst + 3] = buf[src + 3];
-			buf[dst + 2] = buf[src + 2];
-			buf[dst + 1] = buf[src + 1];
-			buf[dst] = buf[src];
+			if (dst > src)
+			{
+				buf[dst + 7] = buf[src + 7];
+				buf[dst + 6] = buf[src + 6];
+				buf[dst + 5] = buf[src + 5];
+				buf[dst + 4] = buf[src + 4];
+				buf[dst + 3] = buf[src + 3];
+				buf[dst + 2] = buf[src + 2];
+				buf[dst + 1] = buf[src + 1];
+				buf[dst] = buf[src];
+			}
+			else
+			{
+                buf[dst] = buf[src];
+                buf[dst + 1] = buf[src + 1];
+                buf[dst + 2] = buf[src + 2];
+                buf[dst + 3] = buf[src + 3];
+                buf[dst + 4] = buf[src + 4];
+                buf[dst + 5] = buf[src + 5];
+                buf[dst + 6] = buf[src + 6];
+                buf[dst + 7] = buf[src + 7];
+            }
 		}
 
 		private static void BlockCopy(byte[] src, int src_0, byte[] dst, int dst_0, int len)
